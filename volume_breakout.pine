@@ -1,0 +1,72 @@
+//@version=6
+indicator("Volume Breakout Quality", overlay=true)
+
+// Input parameters
+lookback = input.int(20, "Lookback Period")
+vol_threshold = input.float(1.5, "Volume Breakout Threshold", step=0.1)
+consolidation_bars = input.int(5, "Consolidation Period")
+
+// Calculate moving averages for price and volume
+sma20 = ta.sma(close, 20)
+vol_sma20 = ta.sma(volume, 20)
+
+// Detect breakout
+isBreakout = close > ta.highest(high[1], lookback-1) and close > sma20
+
+// Calculate volume conditions
+volAboveAvg = volume > vol_sma20 * vol_threshold
+avgConsolVol = ta.sma(volume[1], consolidation_bars)
+volAboveConsol = volume > avgConsolVol
+
+// Detect declining volume pattern
+volDecline = volume < volume[1] and volume[1] < volume[2]
+
+// Volume quality score (0-100)
+volScore = 0.0
+volScore := volume > vol_sma20 * 2 ? 100 :    volume > vol_sma20 * 1.5 ? 75 :    volume > vol_sma20 ? 50 :  volume > vol_sma20 * 0.5 ? 25 : 0
+
+// Create breakout signals 
+goodBreakout = isBreakout and volAboveAvg and volAboveConsol and not volDecline
+weakBreakout = isBreakout and (not volAboveAvg or not volAboveConsol or volDecline)
+
+// Colors
+colorGood = color.new(#00ff00, 70)  // Green
+colorWeak = color.new(#ff0000, 70)  // Red
+colorNeutral = color.new(#999999, 70)  // Grey
+
+// Plot volume analysis
+plotchar(goodBreakout, "Strong Breakout", "•", location.abovebar, colorGood, size=size.large)
+plotchar(weakBreakout, "Weak Breakout", "•", location.abovebar, colorWeak, size=size.large)
+
+// Volume strength indicator
+
+// Labels for breakouts
+if goodBreakout
+    label.new(bar_index, high, text="Strong\nVol: " + str.tostring(math.round(volScore)) + "%", color=colorGood, textcolor=color.white, style=label.style_label_down)
+
+
+// Table with volume analysis
+if barstate.islast
+    var table volTable = table.new(position.top_right, 2, 5)
+    
+    table.cell(volTable, 0, 0, "Volume Analysis", bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(volTable, 1, 0, "Status", bgcolor=color.new(color.black, 0), text_color=color.white)
+    
+    // Volume vs Average
+    volStatus = volume > vol_sma20 ? "✓ Above Avg" : "⚠ Below Avg"
+    table.cell(volTable, 0, 1, "Vol/Avg", text_color=color.white)
+    table.cell(volTable, 1, 1, volStatus, text_color=volume > vol_sma20 ? color.green : color.red)
+    
+    // Volume Trend
+    volTrendStatus = volDecline ? "⚠ Declining" : "✓ Rising"
+    table.cell(volTable, 0, 2, "Vol Trend", text_color=color.white)
+    table.cell(volTable, 1, 2, volTrendStatus, text_color=volDecline ? color.red : color.green)
+    
+    // Breakout Quality
+    breakoutStatus = goodBreakout ? "✓ Strong" : weakBreakout ? "⚠ Weak" : "- None"
+    table.cell(volTable, 0, 3, "Breakout", text_color=color.white)
+    table.cell(volTable, 1, 3, breakoutStatus, text_color=goodBreakout ? color.green : weakBreakout ? color.red : color.gray)
+
+// Alert conditions
+alertcondition(goodBreakout, "Strong Volume Breakout", "Price breakout with strong volume")
+alertcondition(weakBreakout, "Weak Volume Breakout", "Warning: Low volume breakout")

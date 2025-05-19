@@ -1,0 +1,237 @@
+//@version=6 
+indicator("Swing Trader View", overlay=true)
+
+// ————— Moving Averages
+ema20 = ta.ema(close, 20)
+ema50 = ta.ema(close, 50)
+sma200 = ta.sma(close, 200)
+
+// ————— Volume
+volSma20 = ta.sma(volume, 20)
+
+// ————— Signal Calculations
+// Price Action
+isAboveEma20 = close > ema20
+isAboveEma50 = close > ema50
+isAboveSma200 = close > sma200
+higherLows = low > low[1] and low[1] > low[2]
+cleanStructure = math.abs((high - low) / close) < 0.02  // Less than 2% candle size
+
+// Volume
+volStrength = volume / volSma20
+strongVol = volStrength > 1.5
+weakVol = volStrength < 0.7
+
+// Trend
+strongUptrend = isAboveEma20 and isAboveEma50 and isAboveSma200
+weakUptrend = isAboveEma50 and isAboveSma200
+noUptrend = not isAboveEma50 and not isAboveSma200
+
+// RSI & MACD
+rsi = ta.rsi(close, 14)
+[macdLine, signalLine, histLine] = ta.macd(close, 12, 26, 9)
+macdCrossUp = ta.crossover(macdLine, signalLine)
+macdCrossDown = ta.crossunder(macdLine, signalLine)
+macdTrend = ta.ema(macdLine - signalLine, 9)
+
+// Declare variables for grades and colors
+var string trendGrade = na
+var string maGrade = na
+var string volGrade = na
+var string rsiGrade = na
+var string macdGrade = na
+var string structureGrade = na
+var string overallGrade = na
+
+var color trendColor = na
+var color maColor = na
+var color volColor = na
+var color rsiColor = na
+var color macdColor = na
+var color structureColor = na
+var color overallColor = na
+
+// ————— Add Signal Grade Table
+if barstate.islast
+    var table signalTable = table.new(position.top_left, 2, 8, border_width=1)
+    
+    // Color definitions for grades
+    var COLOR_STRONG = color.new(#00ff00, 20)   // Green
+    var COLOR_GOOD = color.new(#00cc00, 40)     // Light Green
+    var COLOR_NEUTRAL = color.new(#888888, 20)  // Grey
+    var COLOR_WEAK = color.new(#ff9900, 20)     // Orange
+    var COLOR_BAD = color.new(#ff0000, 20)      // Red
+    
+    // Header
+    table.cell(signalTable, 0, 0, "SIGNAL GRADES", bgcolor=color.new(color.black, 20), text_color=color.white)
+    table.cell(signalTable, 1, 0, "STATUS", bgcolor=color.new(color.black, 20), text_color=color.white)
+    
+    // 1. Trend Status
+    trendGrade := if (strongUptrend)
+        "STRONG ▲"
+    else if (weakUptrend)
+        "MODERATE ▲"
+    else if (noUptrend)
+        "WEAK ▼"
+    else
+        "NEUTRAL ◄►"
+
+    trendColor := if (strongUptrend)
+        COLOR_STRONG
+    else if (weakUptrend)
+        COLOR_GOOD
+    else if (noUptrend)
+        COLOR_BAD
+    else
+        COLOR_NEUTRAL
+
+    table.cell(signalTable, 0, 1, "Trend", text_color=color.white)
+    table.cell(signalTable, 1, 1, trendGrade, bgcolor=trendColor)
+    
+    // 2. Moving Averages
+    maGrade := if (isAboveEma20 and isAboveEma50 and isAboveSma200)
+        "STRONG ▲"
+    else if (isAboveEma50 and isAboveSma200)
+        "GOOD ▲"
+    else if (isAboveSma200)
+        "NEUTRAL ◄►"
+    else
+        "WEAK ▼"
+
+    maColor := if (isAboveEma20 and isAboveEma50 and isAboveSma200)
+        COLOR_STRONG
+    else if (isAboveEma50 and isAboveSma200)
+        COLOR_GOOD
+    else if (isAboveSma200)
+        COLOR_NEUTRAL
+    else
+        COLOR_BAD
+
+    table.cell(signalTable, 0, 2, "MA Setup", text_color=color.white)
+    table.cell(signalTable, 1, 2, maGrade, bgcolor=maColor)
+    
+    // 3. Volume
+    volGrade := if (strongVol)
+        "STRONG ▲"
+    else if (weakVol)
+        "WEAK ▼"
+    else
+        "NORMAL ◄►"
+
+    volColor := if (strongVol)
+        COLOR_STRONG
+    else if (weakVol)
+        COLOR_BAD
+    else
+        COLOR_NEUTRAL
+
+    table.cell(signalTable, 0, 3, "Volume", text_color=color.white)
+    table.cell(signalTable, 1, 3, volGrade, bgcolor=volColor)
+    
+    // 4. RSI Status
+    rsiGrade := if (rsi > 60)
+        "STRONG ▲"
+    else if (rsi > 50)
+        "GOOD ▲"
+    else if (rsi < 30)
+        "OVERSOLD ▼"
+    else
+        "NEUTRAL ◄►"
+
+    rsiColor := if (rsi > 60)
+        COLOR_STRONG
+    else if (rsi > 50)
+        COLOR_GOOD
+    else if (rsi < 30)
+        COLOR_WEAK
+    else
+        COLOR_NEUTRAL
+
+    table.cell(signalTable, 0, 4, "RSI", text_color=color.white)
+    table.cell(signalTable, 1, 4, rsiGrade, bgcolor=rsiColor)
+    
+    // 5. MACD
+    macdGrade := if (macdCrossUp and macdLine > 0 and histLine > histLine[1])
+        "STRONG BUY ▲"
+    else if (macdLine > signalLine and macdTrend > 0)
+        "BULLISH ▲"
+    else if (macdLine > signalLine and macdTrend <= 0)
+        "WEAK BULL ▲"
+    else if (macdCrossDown and macdLine < 0)
+        "STRONG SELL ▼"
+    else if (macdLine < signalLine)
+        "BEARISH ▼"
+    else
+        "NEUTRAL ◄►"
+
+    macdColor := if (macdCrossUp and macdLine > 0 and histLine > histLine[1])
+        COLOR_STRONG
+    else if (macdLine > signalLine and macdTrend > 0)
+        COLOR_GOOD
+    else if (macdLine > signalLine and macdTrend <= 0)
+        COLOR_NEUTRAL
+    else if (macdCrossDown and macdLine < 0)
+        COLOR_BAD
+    else if (macdLine < signalLine)
+        COLOR_WEAK
+    else
+        COLOR_NEUTRAL
+
+    table.cell(signalTable, 0, 5, "MACD", text_color=color.white)
+    table.cell(signalTable, 1, 5, macdGrade, bgcolor=macdColor)
+    
+    // 6. Price Structure
+    structureGrade := if (higherLows and cleanStructure)
+        "STRONG ▲"
+    else if (higherLows)
+        "GOOD ▲"
+    else if (cleanStructure)
+        "NEUTRAL ◄►"
+    else
+        "WEAK ▼"
+
+    structureColor := if (higherLows and cleanStructure)
+        COLOR_STRONG
+    else if (higherLows)
+        COLOR_GOOD
+    else if (cleanStructure)
+        COLOR_NEUTRAL
+    else
+        COLOR_WEAK
+
+    table.cell(signalTable, 0, 6, "Structure", text_color=color.white)
+    table.cell(signalTable, 1, 6, structureGrade, bgcolor=structureColor)
+    
+    // 7. Overall Grade
+    var float signalCount = 0.0  // Declare signalCount as float
+    signalCount := (strongUptrend ? 2 : weakUptrend ? 1 : 0) +
+                   (strongVol ? 2 : weakVol ? 0 : 1) +
+                   (rsi > 60 ? 2 : rsi > 50 ? 1 : 0) +
+                   (macdLine > signalLine ? 1 : 0) +
+                   (higherLows ? 1 : 0)
+     
+    overallGrade := if (signalCount >= 7)
+        "VERY STRONG ▲"
+    else if (signalCount >= 5)
+        "STRONG ▲"
+    else if (signalCount >= 3)
+        "NEUTRAL ◄►"
+    else
+        "WEAK ▼"
+
+    overallColor := if (signalCount >= 7)
+        COLOR_STRONG
+    else if (signalCount >= 5)
+        COLOR_GOOD
+    else if (signalCount >= 3)
+        COLOR_NEUTRAL
+    else
+        COLOR_WEAK
+
+    table.cell(signalTable, 0, 7, "OVERALL", text_color=color.white)
+    table.cell(signalTable, 1, 7, overallGrade, bgcolor=overallColor)
+
+// Plot moving averages on chart
+plot(ema20, "EMA 20", color=color.new(#0077FF, 0), linewidth=2)
+plot(ema50, "EMA 50", color=color.new(#00FF00, 0), linewidth=2)
+plot(sma200, "SMA 200", color=color.new(#FF0000, 0), linewidth=2)

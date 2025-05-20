@@ -53,7 +53,7 @@ var color overallColor = na
 
 // ————— Add Signal Grade Table
 if barstate.islast
-    var table signalTable = table.new(position.top_left, 2, 8, border_width=1)
+    var table signalTable = table.new(position.top_right, 2, 8, border_width=1)
     
     // Color definitions for grades
     var COLOR_STRONG = color.new(#00ff00, 20)   // Green
@@ -85,7 +85,7 @@ if barstate.islast
     else
         COLOR_NEUTRAL
 
-    table.cell(signalTable, 0, 1, "Trend", text_color=color.white)
+    table.cell(signalTable, 0, 1, "Trend", text_color=color.white, text_halign = text.align_right)
     table.cell(signalTable, 1, 1, trendGrade, bgcolor=trendColor)
     
     // 2. Moving Averages
@@ -107,7 +107,7 @@ if barstate.islast
     else
         COLOR_BAD
 
-    table.cell(signalTable, 0, 2, "MA Setup", text_color=color.white)
+    table.cell(signalTable, 0, 2, "MA Setup", text_color=color.white, text_halign = text.align_right)
     table.cell(signalTable, 1, 2, maGrade, bgcolor=maColor)
     
     // 3. Volume
@@ -125,7 +125,7 @@ if barstate.islast
     else
         COLOR_NEUTRAL
 
-    table.cell(signalTable, 0, 3, "Volume", text_color=color.white)
+    table.cell(signalTable, 0, 3, "Volume", text_color=color.white, text_halign = text.align_right)
     table.cell(signalTable, 1, 3, volGrade, bgcolor=volColor)
     
     // 4. RSI Status
@@ -147,7 +147,7 @@ if barstate.islast
     else
         COLOR_NEUTRAL
 
-    table.cell(signalTable, 0, 4, "RSI", text_color=color.white)
+    table.cell(signalTable, 0, 4, "RSI", text_color=color.white, text_halign = text.align_right)
     table.cell(signalTable, 1, 4, rsiGrade, bgcolor=rsiColor)
     
     // 5. MACD
@@ -177,7 +177,7 @@ if barstate.islast
     else
         COLOR_NEUTRAL
 
-    table.cell(signalTable, 0, 5, "MACD", text_color=color.white)
+    table.cell(signalTable, 0, 5, "MACD", text_color=color.white, text_halign = text.align_right)
     table.cell(signalTable, 1, 5, macdGrade, bgcolor=macdColor)
     
     // 6. Price Structure
@@ -199,7 +199,7 @@ if barstate.islast
     else
         COLOR_WEAK
 
-    table.cell(signalTable, 0, 6, "Structure", text_color=color.white)
+    table.cell(signalTable, 0, 6, "Structure", text_color=color.white, text_halign = text.align_right)
     table.cell(signalTable, 1, 6, structureGrade, bgcolor=structureColor)
     
     // 7. Overall Grade
@@ -228,10 +228,5 @@ if barstate.islast
     else
         COLOR_WEAK
 
-    table.cell(signalTable, 0, 7, "OVERALL", text_color=color.white)
+    table.cell(signalTable, 0, 7, "OVERALL", text_color=color.white, text_halign = text.align_right)
     table.cell(signalTable, 1, 7, overallGrade, bgcolor=overallColor)
-
-// Plot moving averages on chart
-plot(ema20, "EMA 20", color=color.new(#0077FF, 0), linewidth=2)
-plot(ema50, "EMA 50", color=color.new(#00FF00, 0), linewidth=2)
-plot(sma200, "SMA 200", color=color.new(#FF0000, 0), linewidth=2)

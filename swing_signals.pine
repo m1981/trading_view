@@ -1,0 +1,83 @@
+//@version=6
+indicator("Professional Swing Trading Signals", overlay=true)
+
+// ==========================================
+// Market Internals Integration
+// ==========================================
+// Market breadth indicators using different indices
+spx = request.security("SPY", timeframe.period, close)
+nasdaq = request.security("QQQ", timeframe.period, close)
+rut = request.security("IWM", timeframe.period, close)  // Russell 2000
+vix = request.security("VIX", timeframe.period, close)
+
+// Calculate relative strength and trends
+spx_trend = spx > ta.sma(spx, 20)
+nasdaq_trend = nasdaq > ta.sma(nasdaq, 20)
+rut_trend = rut > ta.sma(rut, 20)
+vix_bearish = vix < ta.sma(vix, 20)  // Lower VIX is typically bullish
+
+// Calculate market health score
+market_health_score = 0
+market_health_score := spx_trend ? market_health_score + 1 : market_health_score
+market_health_score := nasdaq_trend ? market_health_score + 1 : market_health_score
+market_health_score := rut_trend ? market_health_score + 1 : market_health_score
+market_health_score := vix_bearish ? market_health_score + 1 : market_health_score
+
+// Alternative calculation using relative performance
+spx_strength = ta.roc(spx, 10)  // Rate of Change over 10 periods
+nasdaq_strength = ta.roc(nasdaq, 10)
+rut_strength = ta.roc(rut, 10)
+
+// Market leadership score (which index is leading)
+market_leader = spx_strength > nasdaq_strength and spx_strength > rut_strength ? "SPY" :                 nasdaq_strength > spx_strength and nasdaq_strength > rut_strength ? "QQQ" : "IWM"
+market_health = market_health_score >= 3 ? "Bullish" :       market_health_score >= 2 ? "Neutral" : "Bearish"
+
+// ==========================================
+// Visualization
+// ==========================================
+if barstate.islast
+    var table display = table.new(position.top_right, 3, 6)
+    
+    // Headers
+    table.cell(display, 0, 0, "Market Analysis", bgcolor = color.gray, text_color=color.white)
+    table.cell(display, 1, 0, "Status", bgcolor = color.gray, text_color=color.white)
+    table.cell(display, 2, 0, "Details", bgcolor = color.gray, text_color=color.white)
+    
+    // Market Health
+    table.cell(display, 0, 1, "Market Health")
+    table.cell(display, 1, 1, market_health,
+              text_color = market_health_score >= 3 ? color.green :
+                          market_health_score >= 2 ? color.yellow : color.red)
+    table.cell(display, 2, 1, "Score: " + str.tostring(market_health_score) + "/4")
+    
+    // Individual Index Status
+    table.cell(display, 0, 2, "SPY Trend")
+    table.cell(display, 1, 2, spx_trend ? "Bullish" : "Bearish",
+              text_color = spx_trend ? color.green : color.red)
+    table.cell(display, 2, 2, str.tostring(math.round(spx_strength, 2)) + "%")
+    
+    table.cell(display, 0, 3, "QQQ Trend")
+    table.cell(display, 1, 3, nasdaq_trend ? "Bullish" : "Bearish",
+              text_color = nasdaq_trend ? color.green : color.red)
+    table.cell(display, 2, 3, str.tostring(math.round(nasdaq_strength, 2)) + "%")
+    
+    table.cell(display, 0, 4, "IWM Trend")
+    table.cell(display, 1, 4, rut_trend ? "Bullish" : "Bearish",
+              text_color = rut_trend ? color.green : color.red)
+    table.cell(display, 2, 4, str.tostring(math.round(rut_strength, 2)) + "%")
+    
+    // Market Leadership
+    table.cell(display, 0, 5, "Market Leader")
+    table.cell(display, 1, 5, market_leader,
+              text_color = market_leader == "SPY" ? color.green :
+                          market_leader == "QQQ" ? color.blue : color.yellow)
+    table.cell(display, 2, 5, "10-period ROC")
+
+// Alert conditions
+alertcondition(market_health_score >= 3 and market_health_score[1] < 3, 
+               "Market Health Improving", 
+               "Market conditions turning bullish")
+
+alertcondition(market_health_score < 2 and market_health_score[1] >= 2, 
+               "Market Health Deteriorating", 
+               "Market conditions turning bearish")

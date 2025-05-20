@@ -1,0 +1,22 @@
+//@version=6
+indicator("Higher Price Levels", overlay=true)
+
+var lines = array.new<line>()
+
+if barstate.islast
+    float lastBarHigh = high
+    float currentHighest = lastBarHigh
+    
+    // Clear old lines
+    int size = array.size(lines)
+    if size > 0
+        for i = 0 to size - 1
+            line.delete(array.get(lines, i))
+    array.clear(lines)
+    
+    // Look back and plot only new higher levels
+    for i = 1 to 500  // Adjust lookback as needed
+        if high[i] > currentHighest
+            currentHighest := high[i]  // Update the highest level we've seen
+            line newLine = line.new( x1 = bar_index - i,  y1 = high[i],  x2 = bar_index,  y2 = high[i],    color = color.new(#e4e8eb, 60), style = line.style_dashed, extend = extend.right)
+            array.push(lines, newLine)

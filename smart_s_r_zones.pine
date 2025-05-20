@@ -91,6 +91,3 @@ if barstate.islast
                  color=color.new(color.black, 100),
                  textcolor=color.white,
                  size=size.small)
-
-// Plot current price for reference
-plot(close, "Price", color=color.blue, linewidth=2)

@@ -8,6 +8,9 @@ min_touches = input.int(2, "Minimum Touches", minval=1)
 atr_mult = input.float(0.5, "ATR Zone Width Multiplier", minval=0.1, step=0.1)
 swing_strength = input.int(2, "Swing Strength", minval=1, tooltip="Number of bars to check on each side for swing detection")
 show_debug = input.bool(false, "Show Debug Info")
+highlight_nearest = input.bool(true, "Highlight Nearest Zones")
+nearest_opacity = input.int(50, "Nearest Zone Opacity %", minval=0, maxval=100)
+other_opacity = input.int(90, "Other Zones Opacity %", minval=0, maxval=100)
 
 // Moving Average Parameters
 show_mas = input.bool(true, "Show Moving Averages", group="Moving Averages")
@@ -15,9 +18,9 @@ show_20ema = input.bool(true, "Show 20 EMA", group="Moving Averages")
 show_50sma = input.bool(true, "Show 50 SMA", group="Moving Averages")
 show_200sma = input.bool(true, "Show 200 SMA", group="Moving Averages")
 
-// Colors
-color_resistance = input.color(color.new(#ff0000, 90), "Resistance Zone Color")
-color_support = input.color(color.new(#00ff00, 90), "Support Zone Color")
+// Base colors (without transparency)
+base_resistance_color = input.color(color.red, "Resistance Base Color")
+base_support_color = input.color(color.green, "Support Base Color")
 
 // Calculate ATR for zone width
 atr = ta.atr(14)
@@ -138,6 +141,29 @@ if barstate.islast
     if show_debug and array.size(levels) > 0
         label.new(bar_index, low, "Merged Levels: " + str.tostring(array.size(levels)), color=color.white)
     
+    // Find nearest resistance and support levels
+    var float nearest_resistance_price = na
+    var float nearest_support_price = na
+
+    if array.size(levels) > 0 and highlight_nearest
+        // Initialize with extreme values
+        nearest_resistance_price := 1000000.0
+        nearest_support_price := 0.0
+
+        // Find nearest resistance (above current price)
+        for i = 0 to array.size(levels) - 1
+            level = array.get(levels, i)
+            if level.isResistance and level.price > close and level.touches >= min_touches
+                if level.price < nearest_resistance_price or na(nearest_resistance_price)
+                    nearest_resistance_price := level.price
+
+        // Find nearest support (below current price)
+        for i = 0 to array.size(levels) - 1
+            level = array.get(levels, i)
+            if not level.isResistance and level.price < close and level.touches >= min_touches
+                if level.price > nearest_support_price or na(nearest_support_price)
+                    nearest_support_price := level.price
+
     // Draw zones for significant levels
     zones_drawn = 0
     for i = 0 to array.size(levels) - 1
@@ -145,7 +171,20 @@ if barstate.islast
         if level.touches >= min_touches
             zone_top = level.price + zone_width/2
             zone_bottom = level.price - zone_width/2
-            zone_color = level.isResistance ? color_resistance : color_support
+
+            // Determine opacity based on proximity to price
+            is_nearest = false
+            if highlight_nearest
+                if level.isResistance and level.price == nearest_resistance_price
+                    is_nearest := true
+                if not level.isResistance and level.price == nearest_support_price
+                    is_nearest := true
+
+            // Set colors with appropriate opacity
+            opacity = is_nearest ? nearest_opacity : other_opacity
+            zone_color = level.isResistance ?
+                         color.new(base_resistance_color, opacity) :
+                         color.new(base_support_color, opacity)
             
             // Create zone box
             b = box.new(
@@ -172,6 +211,10 @@ if barstate.islast
     // Debug info
     if show_debug
         label.new(bar_index, (high + low) / 2, "Zones Drawn: " + str.tostring(zones_drawn), color=color.white)
+        if not na(nearest_resistance_price)
+            label.new(bar_index, nearest_resistance_price, "Nearest R: " + str.tostring(nearest_resistance_price), color=color.red)
+        if not na(nearest_support_price)
+            label.new(bar_index, nearest_support_price, "Nearest S: " + str.tostring(nearest_support_price), color=color.green)
 
     // Check for MA crossovers
     if show_mas

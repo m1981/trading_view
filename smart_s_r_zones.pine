@@ -1,93 +1,188 @@
 //@version=6
-indicator("Smart S/R Zones", overlay=true, max_boxes_count=500)
+indicator("Smart S/R Zones with MAs", overlay=true, max_boxes_count=500, max_labels_count=500)
 
-// Input parameters
-lookback = input.int(200, "Lookback Period", minval=50)
+// Input parameters for S/R zones
+lookback = math.min(input.int(200, "Lookback Period", minval=50), 500)
 zone_threshold = input.float(0.2, "Zone Threshold %", minval=0.1, step=0.1)/100
-min_touches = input.int(2, "Minimum Touches", minval=2)
+min_touches = input.int(2, "Minimum Touches", minval=1)
 atr_mult = input.float(0.5, "ATR Zone Width Multiplier", minval=0.1, step=0.1)
+swing_strength = input.int(2, "Swing Strength", minval=1, tooltip="Number of bars to check on each side for swing detection")
+show_debug = input.bool(false, "Show Debug Info")
+
+// Moving Average Parameters
+show_mas = input.bool(true, "Show Moving Averages", group="Moving Averages")
+show_20ema = input.bool(true, "Show 20 EMA", group="Moving Averages")
+show_50sma = input.bool(true, "Show 50 SMA", group="Moving Averages")
+show_200sma = input.bool(true, "Show 200 SMA", group="Moving Averages")
 
 // Colors
-var color_resistance = color.new(#ff0000, 80)  // Red with 80% transparency
-var color_support = color.new(#00ff00, 80)     // Green with 80% transparency
+color_resistance = input.color(color.new(#ff0000, 90), "Resistance Zone Color")
+color_support = input.color(color.new(#00ff00, 90), "Support Zone Color")
 
 // Calculate ATR for zone width
 atr = ta.atr(14)
 zone_width = atr * atr_mult
 
-// Function to detect swing high/low
-isSwingHigh(len) =>
-    high[len] > high[len + 1] and high[len] > high[len - 1] and high[len] > high[len + 2] and high[len] > high[len - 2]
+// Calculate Moving Averages
+ema20 = ta.ema(close, 20)
+sma50 = ta.sma(close, 50)
+sma200 = ta.sma(close, 200)
 
-isSwingLow(len) =>
-    low[len] < low[len + 1] and low[len] < low[len - 1] and low[len] < low[len + 2] and low[len] < low[len - 2]
+// Determine MA colors based on price position
+ema20_color = close > ema20 ? color.rgb(195, 32, 216) : color.rgb(195, 32, 216)
+sma50_color = close > sma50 ? color.rgb(138, 111, 22) : color.rgb(138, 111, 22)
+sma200_color = close > sma200 ? color.rgb(32, 127, 216) : color.rgb(240, 208, 30)
+
+// Plot Moving Averages (in global scope)
+plot(show_mas and show_20ema ? ema20 : na, "20 EMA", ema20_color, 1)
+plot(show_mas and show_50sma ? sma50 : na, "50 SMA", sma50_color, 1)
+plot(show_mas and show_200sma ? sma200 : na, "200 SMA", sma200_color, 1)
+
+// Function to detect swing high/low with configurable strength
+isSwingHigh(len, strength) =>
+    result = true
+    for i = 1 to strength
+        if high[len] <= high[len + i] or high[len] <= high[len - i]
+            result := false
+            break
+    result
+
+isSwingLow(len, strength) =>
+    result = true
+    for i = 1 to strength
+        if low[len] >= low[len + i] or low[len] >= low[len - i]
+            result := false
+            break
+    result
 
 // Structure to store price levels and their touches
 type PriceLevel
     float price
     int touches
     bool isResistance
- 
+
 var levels = array.new<PriceLevel>()
+var box[] boxes = array.new_box()
+var label[] labels = array.new_label()
 
 // Process new swing points
 if barstate.islast
     // Clear previous levels
     array.clear(levels)
-    
-    // Find swing highs and lows
-    for i = 2 to lookback
-        if isSwingHigh(i)
-            level = PriceLevel.new(high[i], 1, true)
-            array.push(levels, level)
-        if isSwingLow(i)
-            level = PriceLevel.new(low[i], 1, false)
-            array.push(levels, level)
-    
-    // Combine nearby levels and count touches
-    if array.size(levels) > 0
-        for i = array.size(levels) - 1 to 1
-            level1 = array.get(levels, i)
-            for j = i - 1 to 0
-                level2 = array.get(levels, j)
-                // If levels are close, combine them
-                if math.abs(level1.price - level2.price) / level1.price < zone_threshold
-                    level2.touches += level1.touches
-                    array.remove(levels, i)
-                    break
-    
-    // Draw zones for significant levels
-    var box[] boxes = array.new_box()
-    
+
     // Clear previous boxes
     if array.size(boxes) > 0
         for i = 0 to array.size(boxes) - 1
             box.delete(array.get(boxes, i))
     array.clear(boxes)
-    
-    // Draw new zones
+
+    // Clear previous labels
+    if array.size(labels) > 0
+        for i = 0 to array.size(labels) - 1
+            label.delete(array.get(labels, i))
+    array.clear(labels)
+
+    // Find swing highs and lows
+    swing_count = 0
+    for i = swing_strength to lookback
+        if isSwingHigh(i, swing_strength)
+            level = PriceLevel.new(high[i], 1, true)
+            array.push(levels, level)
+            swing_count += 1
+        if isSwingLow(i, swing_strength)
+            level = PriceLevel.new(low[i], 1, false)
+            array.push(levels, level)
+            swing_count += 1
+
+    // Debug info
+    if show_debug
+        label.new(bar_index, high, "Swings: " + str.tostring(swing_count), color=color.white)
+
+    // Merge nearby levels
+    array_size = array.size(levels)
+    if array_size > 0
+        // First, sort levels by price
+        if array_size > 1
+            for i = 0 to array_size - 2
+                for j = 0 to array_size - i - 2
+                    level1 = array.get(levels, j)
+                    level2 = array.get(levels, j + 1)
+                    if level1.price > level2.price
+                        array.set(levels, j, level2)
+                        array.set(levels, j + 1, level1)
+
+        // Then merge nearby levels
+        if array_size > 1
+            merged_levels = array.new<PriceLevel>()
+            current_level = array.get(levels, 0)
+            array.push(merged_levels, current_level)
+
+            for i = 1 to array_size - 1
+                next_level = array.get(levels, i)
+                price_diff = math.abs(next_level.price - current_level.price) / current_level.price
+
+                // If levels are close, combine them
+                if price_diff < zone_threshold
+                    current_level.touches += next_level.touches
+                    // For resistance/support determination, use the majority type
+                    if next_level.isResistance and not current_level.isResistance and next_level.touches > current_level.touches
+                        current_level.isResistance := true
+                else
+                    current_level := next_level
+                    array.push(merged_levels, current_level)
+
+            // Replace original array with merged array
+            levels := merged_levels
+
+    // Debug info
+    if show_debug and array.size(levels) > 0
+        label.new(bar_index, low, "Merged Levels: " + str.tostring(array.size(levels)), color=color.white)
+
+    // Draw zones for significant levels
+    zones_drawn = 0
     for i = 0 to array.size(levels) - 1
         level = array.get(levels, i)
         if level.touches >= min_touches
             zone_top = level.price + zone_width/2
             zone_bottom = level.price - zone_width/2
             zone_color = level.isResistance ? color_resistance : color_support
-            
+
             // Create zone box
             b = box.new(
                  left=bar_index - lookback,
                  top=zone_top,
-                 right=bar_index + 10,
+                 right=bar_index + 20,
                  bottom=zone_bottom,
                  bgcolor=zone_color,
-                 border_color=color.new(zone_color, 50))
+                 border_color=zone_color,
+                 extend=extend.right)
             array.push(boxes, b)
-            
+
             // Add label
-            label.new(
-                 x=bar_index + 5,
+            l = label.new(
+                 x=bar_index + 15,
                  y=level.price,
-                 text=level.isResistance ? "R" : "S",
                  color=color.new(color.black, 100),
-                 textcolor=color.white,
-                 size=size.small)
+                 textcolor=level.isResistance ? color.red : color.green,
+                 size=size.small,
+                 style=label.style_label_left)
+            array.push(labels, l)
+            zones_drawn += 1
+
+    // Debug info
+    if show_debug
+        label.new(bar_index, (high + low) / 2, "Zones Drawn: " + str.tostring(zones_drawn), color=color.white)
+
+    // Check for MA crossovers
+    if show_mas
+        // Golden Cross / Death Cross
+        golden_cross = ta.crossover(sma50, sma200)
+        death_cross = ta.crossunder(sma50, sma200)
+
+        if golden_cross
+            crossLabel = label.new(bar_index, low - atr*2, "Golden Cross", color=color.green, style=label.style_label_up)
+            array.push(labels, crossLabel)
+        if death_cross
+            crossLabel = label.new(bar_index, high + atr*2, "Death Cross", color=color.red, style=label.style_label_down)
+            array.push(labels, crossLabel)
+

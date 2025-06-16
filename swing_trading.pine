@@ -1,232 +1,218 @@
 //@version=6 
-indicator("Swing Trader View", overlay=true)
+indicator("Swing Trader View MTF", overlay=true)
 
-// ————— Moving Averages
-ema20 = ta.ema(close, 20)
-ema50 = ta.ema(close, 50)
-sma200 = ta.sma(close, 200)
+// Helper function to determine color based on grade
+getGradeColor(grade) =>
+    if (grade == "STRONG")
+        color.new(#00ff00, 20)  // Strong Green
+    else if (grade == "GOOD")
+        color.new(#00cc00, 40)  // Good Green
+    else if (grade == "NEUTRAL")
+        color.new(#888888, 20)  // Neutral Grey
+    else if (grade == "WEAK")
+        color.new(#ff9900, 20)  // Weak Orange
+    else if (grade == "BAD")
+        color.new(#ff0000, 20)  // Bad Red
+    else
+        color.new(#888888, 20)  // Default Grey
 
-// ————— Volume
-volSma20 = ta.sma(volume, 20)
+// Function to calculate MACD components separately
+getMacdLine(src, fastLen, slowLen) =>
+    fastMA = ta.ema(src, fastLen)
+    slowMA = ta.ema(src, slowLen)
+    macd = fastMA - slowMA
+    macd
 
-// ————— Signal Calculations
-// Price Action
-isAboveEma20 = close > ema20
-isAboveEma50 = close > ema50
-isAboveSma200 = close > sma200
-higherLows = low > low[1] and low[1] > low[2]
-cleanStructure = math.abs((high - low) / close) < 0.02  // Less than 2% candle size
+getSignalLine(src, fastLen, slowLen, sigLen) =>
+    macdLine = getMacdLine(src, fastLen, slowLen)
+    signal = ta.ema(macdLine, sigLen)
+    signal
 
-// Volume
-volStrength = volume / volSma20
-strongVol = volStrength > 1.5
-weakVol = volStrength < 0.7
+getMacdHist(src, fastLen, slowLen, sigLen) =>
+    macdLine = getMacdLine(src, fastLen, slowLen)
+    signalLine = getSignalLine(src, fastLen, slowLen, sigLen)
+    macdLine - signalLine
 
-// Trend
-strongUptrend = isAboveEma20 and isAboveEma50 and isAboveSma200
-weakUptrend = isAboveEma50 and isAboveSma200
-noUptrend = not isAboveEma50 and not isAboveSma200
+// ————— Function to calculate all signals for a specific timeframe
+calcSignals(timeframe) =>
+    // Moving Averages
+    ema20 = request.security(syminfo.tickerid, timeframe, ta.ema(close, 20))
+    ema50 = request.security(syminfo.tickerid, timeframe, ta.ema(close, 50))
+    sma200 = request.security(syminfo.tickerid, timeframe, ta.sma(close, 200))
 
-// RSI & MACD
-rsi = ta.rsi(close, 14)
-[macdLine, signalLine, histLine] = ta.macd(close, 12, 26, 9)
-macdCrossUp = ta.crossover(macdLine, signalLine)
-macdCrossDown = ta.crossunder(macdLine, signalLine)
-macdTrend = ta.ema(macdLine - signalLine, 9)
+    // Volume
+    vol = request.security(syminfo.tickerid, timeframe, volume)
+    volSma20 = request.security(syminfo.tickerid, timeframe, ta.sma(volume, 20))
 
-// Declare variables for grades and colors
-var string trendGrade = na
-var string maGrade = na
-var string volGrade = na
-var string rsiGrade = na
-var string macdGrade = na
-var string structureGrade = na
-var string overallGrade = na
+    // Price data
+    c = request.security(syminfo.tickerid, timeframe, close)
+    l = request.security(syminfo.tickerid, timeframe, low)
+    l1 = request.security(syminfo.tickerid, timeframe, low[1])
+    l2 = request.security(syminfo.tickerid, timeframe, low[2])
+    h = request.security(syminfo.tickerid, timeframe, high)
 
-var color trendColor = na
-var color maColor = na
-var color volColor = na
-var color rsiColor = na
-var color macdColor = na
-var color structureColor = na
-var color overallColor = na
+    // Price Action
+    isAboveEma20 = c > ema20
+    isAboveEma50 = c > ema50
+    isAboveSma200 = c > sma200
+    higherLows = l > l1 and l1 > l2
+    cleanStructure = math.abs((h - l) / c) < 0.02  // Less than 2% candle size
+
+    // Volume
+    volStrength = vol / volSma20
+    strongVol = volStrength > 1.5
+    weakVol = volStrength < 0.7
+
+    // Trend
+    strongUptrend = isAboveEma20 and isAboveEma50 and isAboveSma200
+    weakUptrend = isAboveEma50 and isAboveSma200
+    noUptrend = not isAboveEma50 and not isAboveSma200
+
+    // RSI & MACD
+    rsi = request.security(syminfo.tickerid, timeframe, ta.rsi(close, 14))
+
+    // MACD calculations using our custom functions
+    macdLine = request.security(syminfo.tickerid, timeframe, getMacdLine(close, 12, 26))
+    signalLine = request.security(syminfo.tickerid, timeframe, getSignalLine(close, 12, 26, 9))
+    histCurrent = request.security(syminfo.tickerid, timeframe, getMacdHist(close, 12, 26, 9))
+    histPrev = request.security(syminfo.tickerid, timeframe, getMacdHist(close, 12, 26, 9)[1])
+
+    // MACD crossovers
+    macdCrossUp = request.security(syminfo.tickerid, timeframe, ta.crossover(getMacdLine(close, 12, 26), getSignalLine(close, 12, 26, 9)))
+    macdCrossDown = request.security(syminfo.tickerid, timeframe, ta.crossunder(getMacdLine(close, 12, 26), getSignalLine(close, 12, 26, 9)))
+
+    // MACD trend
+    macdTrend = request.security(syminfo.tickerid, timeframe, ta.ema(getMacdLine(close, 12, 26) - getSignalLine(close, 12, 26, 9), 9))
+
+    // Calculate grades (simplified to just category names)
+    trendGrade = if (strongUptrend)
+        "STRONG"
+    else if (weakUptrend)
+        "GOOD"
+    else if (noUptrend)
+        "BAD"
+    else
+        "NEUTRAL"
+
+    maGrade = if (isAboveEma20 and isAboveEma50 and isAboveSma200)
+        "STRONG"
+    else if (isAboveEma50 and isAboveSma200)
+        "GOOD"
+    else if (isAboveSma200)
+        "NEUTRAL"
+    else
+        "BAD"
+
+    volGrade = if (strongVol)
+        "STRONG"
+    else if (weakVol)
+        "BAD"
+    else
+        "NEUTRAL"
+
+    rsiGrade = if (rsi > 60)
+        "STRONG"
+    else if (rsi > 50)
+        "GOOD"
+    else if (rsi < 30)
+        "BAD"
+    else
+        "NEUTRAL"
+
+    macdGrade = if (macdCrossUp and macdLine > 0 and histCurrent > histPrev)
+        "STRONG"
+    else if (macdLine > signalLine and macdTrend > 0)
+        "GOOD"
+    else if (macdLine > signalLine and macdTrend <= 0)
+        "NEUTRAL"
+    else if (macdCrossDown and macdLine < 0)
+        "BAD"
+    else if (macdLine < signalLine)
+        "WEAK"
+    else
+        "NEUTRAL"
+
+    structureGrade = if (higherLows and cleanStructure)
+        "STRONG"
+    else if (higherLows)
+        "GOOD"
+    else if (cleanStructure)
+        "NEUTRAL"
+    else
+        "WEAK"
+
+    // Calculate overall grade
+    signalCount = (strongUptrend ? 2 : weakUptrend ? 1 : 0) +
+                  (strongVol ? 2 : weakVol ? 0 : 1) +
+                  (rsi > 60 ? 2 : rsi > 50 ? 1 : 0) +
+                  (macdLine > signalLine ? 1 : 0) +
+                  (higherLows ? 1 : 0)
+
+    overallGrade = if (signalCount >= 7)
+        "STRONG"
+    else if (signalCount >= 5)
+        "GOOD"
+    else if (signalCount >= 3)
+        "NEUTRAL"
+    else
+        "WEAK"
+
+    // Return all grades as a tuple
+    [trendGrade, maGrade, volGrade, rsiGrade, macdGrade, structureGrade, overallGrade, signalCount]
+
+// ————— Calculate signals for each timeframe
+[trend15m, ma15m, vol15m, rsi15m, macd15m, structure15m, overall15m, signalCount15m] = calcSignals("15")
+[trendD, maD, volD, rsiD, macdD, structureD, overallD, signalCountD] = calcSignals("D")
+[trendW, maW, volW, rsiW, macdW, structureW, overallW, signalCountW] = calcSignals("W")
 
 // ————— Add Signal Grade Table
 if barstate.islast
-    var table signalTable = table.new(position.top_right, 2, 8, border_width=1)
-    
-    // Color definitions for grades
-    var COLOR_STRONG = color.new(#00ff00, 20)   // Green
-    var COLOR_GOOD = color.new(#00cc00, 40)     // Light Green
-    var COLOR_NEUTRAL = color.new(#888888, 20)  // Grey
-    var COLOR_WEAK = color.new(#ff9900, 20)     // Orange
-    var COLOR_BAD = color.new(#ff0000, 20)      // Red
-    
+    var table signalTable = table.new(position.top_right, 4, 8, border_width=1)
+
     // Header
     table.cell(signalTable, 0, 0, "SIGNAL GRADES", bgcolor=color.new(color.black, 20), text_color=color.white)
-    table.cell(signalTable, 1, 0, "STATUS", bgcolor=color.new(color.black, 20), text_color=color.white)
-    
+    table.cell(signalTable, 1, 0, "15m", bgcolor=color.new(color.black, 20), text_color=color.white)
+    table.cell(signalTable, 2, 0, "Day", bgcolor=color.new(color.black, 20), text_color=color.white)
+    table.cell(signalTable, 3, 0, "We ", bgcolor=color.new(color.black, 20), text_color=color.white)
+
     // 1. Trend Status
-    trendGrade := if (strongUptrend)
-        "STRONG ▲"
-    else if (weakUptrend)
-        "MODERATE ▲"
-    else if (noUptrend)
-        "WEAK ▼"
-    else
-        "NEUTRAL ◄►"
-
-    trendColor := if (strongUptrend)
-        COLOR_STRONG
-    else if (weakUptrend)
-        COLOR_GOOD
-    else if (noUptrend)
-        COLOR_BAD
-    else
-        COLOR_NEUTRAL
-
     table.cell(signalTable, 0, 1, "Trend", text_color=color.white, text_halign = text.align_right)
-    table.cell(signalTable, 1, 1, trendGrade, bgcolor=trendColor)
-    
+    table.cell(signalTable, 1, 1, "", bgcolor=getGradeColor(trend15m))
+    table.cell(signalTable, 2, 1, "", bgcolor=getGradeColor(trendD))
+    table.cell(signalTable, 3, 1, "", bgcolor=getGradeColor(trendW))
+
     // 2. Moving Averages
-    maGrade := if (isAboveEma20 and isAboveEma50 and isAboveSma200)
-        "STRONG ▲"
-    else if (isAboveEma50 and isAboveSma200)
-        "GOOD ▲"
-    else if (isAboveSma200)
-        "NEUTRAL ◄►"
-    else
-        "WEAK ▼"
-
-    maColor := if (isAboveEma20 and isAboveEma50 and isAboveSma200)
-        COLOR_STRONG
-    else if (isAboveEma50 and isAboveSma200)
-        COLOR_GOOD
-    else if (isAboveSma200)
-        COLOR_NEUTRAL
-    else
-        COLOR_BAD
-
     table.cell(signalTable, 0, 2, "MA Setup", text_color=color.white, text_halign = text.align_right)
-    table.cell(signalTable, 1, 2, maGrade, bgcolor=maColor)
-    
+    table.cell(signalTable, 1, 2, "", bgcolor=getGradeColor(ma15m))
+    table.cell(signalTable, 2, 2, "", bgcolor=getGradeColor(maD))
+    table.cell(signalTable, 3, 2, "", bgcolor=getGradeColor(maW))
+
     // 3. Volume
-    volGrade := if (strongVol)
-        "STRONG ▲"
-    else if (weakVol)
-        "WEAK ▼"
-    else
-        "NORMAL ◄►"
-
-    volColor := if (strongVol)
-        COLOR_STRONG
-    else if (weakVol)
-        COLOR_BAD
-    else
-        COLOR_NEUTRAL
-
     table.cell(signalTable, 0, 3, "Volume", text_color=color.white, text_halign = text.align_right)
-    table.cell(signalTable, 1, 3, volGrade, bgcolor=volColor)
-    
+    table.cell(signalTable, 1, 3, "", bgcolor=getGradeColor(vol15m))
+    table.cell(signalTable, 2, 3, "", bgcolor=getGradeColor(volD))
+    table.cell(signalTable, 3, 3, "", bgcolor=getGradeColor(volW))
+
     // 4. RSI Status
-    rsiGrade := if (rsi > 60)
-        "STRONG ▲"
-    else if (rsi > 50)
-        "GOOD ▲"
-    else if (rsi < 30)
-        "OVERSOLD ▼"
-    else
-        "NEUTRAL ◄►"
-
-    rsiColor := if (rsi > 60)
-        COLOR_STRONG
-    else if (rsi > 50)
-        COLOR_GOOD
-    else if (rsi < 30)
-        COLOR_WEAK
-    else
-        COLOR_NEUTRAL
-
     table.cell(signalTable, 0, 4, "RSI", text_color=color.white, text_halign = text.align_right)
-    table.cell(signalTable, 1, 4, rsiGrade, bgcolor=rsiColor)
-    
+    table.cell(signalTable, 1, 4, "", bgcolor=getGradeColor(rsi15m))
+    table.cell(signalTable, 2, 4, "", bgcolor=getGradeColor(rsiD))
+    table.cell(signalTable, 3, 4, "", bgcolor=getGradeColor(rsiW))
+
     // 5. MACD
-    macdGrade := if (macdCrossUp and macdLine > 0 and histLine > histLine[1])
-        "STRONG BUY ▲"
-    else if (macdLine > signalLine and macdTrend > 0)
-        "BULLISH ▲"
-    else if (macdLine > signalLine and macdTrend <= 0)
-        "WEAK BULL ▲"
-    else if (macdCrossDown and macdLine < 0)
-        "STRONG SELL ▼"
-    else if (macdLine < signalLine)
-        "BEARISH ▼"
-    else
-        "NEUTRAL ◄►"
-
-    macdColor := if (macdCrossUp and macdLine > 0 and histLine > histLine[1])
-        COLOR_STRONG
-    else if (macdLine > signalLine and macdTrend > 0)
-        COLOR_GOOD
-    else if (macdLine > signalLine and macdTrend <= 0)
-        COLOR_NEUTRAL
-    else if (macdCrossDown and macdLine < 0)
-        COLOR_BAD
-    else if (macdLine < signalLine)
-        COLOR_WEAK
-    else
-        COLOR_NEUTRAL
-
     table.cell(signalTable, 0, 5, "MACD", text_color=color.white, text_halign = text.align_right)
-    table.cell(signalTable, 1, 5, macdGrade, bgcolor=macdColor)
-    
+    table.cell(signalTable, 1, 5, "", bgcolor=getGradeColor(macd15m))
+    table.cell(signalTable, 2, 5, "", bgcolor=getGradeColor(macdD))
+    table.cell(signalTable, 3, 5, "", bgcolor=getGradeColor(macdW))
+
     // 6. Price Structure
-    structureGrade := if (higherLows and cleanStructure)
-        "STRONG ▲"
-    else if (higherLows)
-        "GOOD ▲"
-    else if (cleanStructure)
-        "NEUTRAL ◄►"
-    else
-        "WEAK ▼"
-
-    structureColor := if (higherLows and cleanStructure)
-        COLOR_STRONG
-    else if (higherLows)
-        COLOR_GOOD
-    else if (cleanStructure)
-        COLOR_NEUTRAL
-    else
-        COLOR_WEAK
-
     table.cell(signalTable, 0, 6, "Structure", text_color=color.white, text_halign = text.align_right)
-    table.cell(signalTable, 1, 6, structureGrade, bgcolor=structureColor)
-    
+    table.cell(signalTable, 1, 6, "", bgcolor=getGradeColor(structure15m))
+    table.cell(signalTable, 2, 6, "", bgcolor=getGradeColor(structureD))
+    table.cell(signalTable, 3, 6, "", bgcolor=getGradeColor(structureW))
+
     // 7. Overall Grade
-    var float signalCount = 0.0  // Declare signalCount as float
-    signalCount := (strongUptrend ? 2 : weakUptrend ? 1 : 0) +
-                   (strongVol ? 2 : weakVol ? 0 : 1) +
-                   (rsi > 60 ? 2 : rsi > 50 ? 1 : 0) +
-                   (macdLine > signalLine ? 1 : 0) +
-                   (higherLows ? 1 : 0)
-     
-    overallGrade := if (signalCount >= 7)
-        "VERY STRONG ▲"
-    else if (signalCount >= 5)
-        "STRONG ▲"
-    else if (signalCount >= 3)
-        "NEUTRAL ◄►"
-    else
-        "WEAK ▼"
-
-    overallColor := if (signalCount >= 7)
-        COLOR_STRONG
-    else if (signalCount >= 5)
-        COLOR_GOOD
-    else if (signalCount >= 3)
-        COLOR_NEUTRAL
-    else
-        COLOR_WEAK
-
     table.cell(signalTable, 0, 7, "OVERALL", text_color=color.white, text_halign = text.align_right)
-    table.cell(signalTable, 1, 7, overallGrade, bgcolor=overallColor)
+    table.cell(signalTable, 1, 7, "", bgcolor=getGradeColor(overall15m))
+    table.cell(signalTable, 2, 7, "", bgcolor=getGradeColor(overallD))
+    table.cell(signalTable, 3, 7, "", bgcolor=getGradeColor(overallW))

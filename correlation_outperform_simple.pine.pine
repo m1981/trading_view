@@ -1,0 +1,38 @@
+//@version=6
+indicator("Stock Outperformance Metrics", shorttitle="Outperf", format=format.price, precision=2)
+
+// Inputs
+symbolInput = input.symbol("NDXT", "Benchmark Symbol")
+lookbackPeriod = input.int(60, "Performance Lookback (bars)", minval=10)
+smoothingPeriod = input.int(14, "Smoothing Period", minval=1)
+
+// Get price data
+benchmarkPrice = request.security(symbolInput, timeframe.period, close)
+stockPrice = close
+
+// Calculate returns (daily percentage changes)
+stockReturn = (stockPrice / stockPrice[1] - 1)
+benchmarkReturn = (benchmarkPrice / benchmarkPrice[1] - 1)
+
+// Calculate excess return
+excessReturn = stockReturn - benchmarkReturn
+
+// Calculate tracking error (volatility of excess return)
+trackingError = ta.stdev(excessReturn, lookbackPeriod)
+
+// Calculate Information Ratio
+informationRatio = ta.sma(excessReturn, lookbackPeriod) / trackingError
+
+// Calculate Alpha (simplified version)
+beta = ta.correlation(stockReturn, benchmarkReturn, lookbackPeriod) * (ta.stdev(stockReturn, lookbackPeriod) / ta.stdev(benchmarkReturn, lookbackPeriod))
+alpha = ta.sma(stockReturn - beta * benchmarkReturn, lookbackPeriod) * 252  // Annualized
+
+// Visualization
+plot(informationRatio, "Information Ratio", color=color.blue, linewidth=2)
+plot(alpha, "Alpha", color=color.purple)
+hline(0, "Zero Line", color=color.gray, linestyle=hline.style_dashed)
+
+// Color coding
+bgcolor(informationRatio > 0.5 ? color.new(color.green, 90) : 
+       informationRatio < -0.5 ? color.new(color.red, 90) : 
+       na)

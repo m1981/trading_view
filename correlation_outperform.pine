@@ -1,0 +1,33 @@
+//@version=6
+indicator("Correlation & Outperformance", shorttitle = "Corr+Outperf", format = format.price, precision = 2)
+
+// Inputs
+symbolInput = input.symbol("NDXT", "Tech Index Symbol", confirm = true)
+sourceInput = input.source(close, "Source")
+lengthInput = input.int(20, "Correlation Length")
+perfLengthInput = input.int(5, "Performance Comparison Length", minval=1)
+
+// Get data for both securities
+indexData = request.security(symbolInput, timeframe.period, sourceInput)
+currentSymbolData = sourceInput
+
+// Calculate correlation
+correlation = ta.correlation(currentSymbolData, indexData, lengthInput)
+
+// Calculate performance metrics (percent change over specified period)
+stockPerf = (currentSymbolData / currentSymbolData[perfLengthInput] - 1) * 100
+indexPerf = (indexData / indexData[perfLengthInput] - 1) * 100
+
+// Determine if stock is outperforming
+isOutperforming = stockPerf > indexPerf
+
+// Plot correlation with color based on outperformance
+plot(correlation, "Correlation", color = isOutperforming ? color.green : color.red, linewidth = 2)
+
+// Reference lines
+hline(1, "Perfect Correlation", color = color.new(color.gray, 50))
+hline(0, "No Correlation", color = color.new(color.gray, 50))
+hline(-1, "Inverse Correlation", color = color.new(color.gray, 50))
+
+// Optional: Plot performance difference
+plot(stockPerf - indexPerf, "Relative Performance", color = color.purple, style = plot.style_histogram, histbase = 0)

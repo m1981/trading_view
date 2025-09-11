@@ -23,13 +23,28 @@ daily_rsi_2 = request.security(syminfo.tickerid, "D", ta.rsi(close, rsi_length))
 // Calculate price change over specified period (daily timeframe)
 daily_price_change_150d = request.security(syminfo.tickerid, "D", close / close[price_change_period] - 1)
 
-// Entry conditions
-daily_uptrend = daily_close > daily_ma_200
-daily_pullback = daily_close < daily_bb_lower
+// Volume analysis
+daily_volume = request.security(syminfo.tickerid, "D", volume)
+daily_volume_sma = request.security(syminfo.tickerid, "D", ta.sma(volume, 20))
+volume_ratio = daily_volume / daily_volume_sma
+
+// Enhanced entry conditions with volume
+volume_confirmation = volume_ratio > 1.2  // Above average volume on pullback
 daily_buy_limit_price = daily_close * (1 - limit_order_pct/100)  // Limit order price
 
-// Buy signal
-daily_buy_signal = daily_uptrend and daily_pullback
+// Market regime filter
+vix = request.security("VIX", "D", close)
+vix_sma = request.security("VIX", "D", ta.sma(close, 20))
+low_fear_environment = vix < vix_sma * 1.2  // VIX not spiking
+
+// Sector relative strength (using SPY as benchmark)
+spy_close = request.security("SPY", "D", close)
+spy_sma20 = request.security("SPY", "D", ta.sma(close, 20))
+stock_vs_spy = (daily_close / daily_close[20]) / (spy_close / spy_close[20])
+sector_strength = stock_vs_spy > 1.0  // Outperforming market
+
+// Final buy signal with all filters
+daily_buy_signal = daily_uptrend and daily_pullback and volume_confirmation and low_fear_environment and sector_strength
 
 // Calculate days held (needs to be tracked across timeframes)
 var float last_buy_time = 0.0
@@ -45,10 +60,23 @@ if (daily_buy_signal and (days_held == 0 or is_new_day))
 else if (days_held > 0 and is_new_day)
     days_held := days_held + 1
 
-// Exit conditions
-daily_rsi_exit = daily_rsi_2 > 50
-daily_time_exit = days_held >= max_hold_days
-daily_sell_signal = (daily_rsi_exit or daily_time_exit) and days_held > 0
+// Enhanced exit conditions
+var float entry_price = na
+var float trailing_stop = na
+
+if daily_buy_signal and days_held == 0
+    entry_price := daily_close
+    trailing_stop := entry_price * 0.95  // 5% initial stop
+
+// Update trailing stop
+if days_held > 0 and daily_close > entry_price * 1.02  // If up 2%
+    new_stop = daily_close * 0.98  // 2% trailing stop
+    trailing_stop := math.max(trailing_stop, new_stop)
+
+// Enhanced sell conditions
+daily_stop_loss = daily_close < trailing_stop
+daily_profit_target = daily_close > entry_price * 1.08  // 8% profit target
+daily_sell_signal = (daily_rsi_exit or daily_time_exit or daily_stop_loss or daily_profit_target) and days_held > 0
 
 // Reset days_held when selling
 if (daily_sell_signal and is_new_day)
@@ -63,15 +91,18 @@ plot(daily_bb_lower, "Lower Bollinger Band", color.rgb(255, 0, 0), 1)
 plotshape(daily_buy_signal, "Buy Signal", shape.triangleup, location.belowbar, color.green, size=size.small)
 plotshape(daily_sell_signal, "Sell Signal", shape.triangledown, location.abovebar, color.red, size=size.small)
 
-// Display current status
-var label status_label = na
+// Enhanced status display
 if (barstate.islast)
-    status_text = "Daily Strategy Status:\n"
-    status_text += "Uptrend: " + (daily_uptrend ? "Yes" : "No") + "\n"
-    status_text += "Pullback: " + (daily_pullback ? "Yes" : "No") + "\n"
-    status_text += "RSI(2): " + str.tostring(daily_rsi_2, "#.##") + "\n"
+    status_text = "Enhanced Mean Reversion:\n"
+    status_text += "Uptrend: " + (daily_uptrend ? "✓" : "✗") + "\n"
+    status_text += "Pullback: " + (daily_pullback ? "✓" : "✗") + "\n"
+    status_text += "Volume: " + str.tostring(volume_ratio, "#.##") + "x\n"
+    status_text += "VIX Filter: " + (low_fear_environment ? "✓" : "✗") + "\n"
+    status_text += "Sector Strength: " + (sector_strength ? "✓" : "✗") + "\n"
     status_text += "Days Held: " + str.tostring(days_held) + "\n"
-    status_text += "150d Change: " + str.tostring(daily_price_change_150d * 100, "#.##") + "%"
+    if not na(entry_price) and days_held > 0
+        pnl_pct = (daily_close / entry_price - 1) * 100
+        status_text += "P&L: " + str.tostring(pnl_pct, "#.##") + "%"
     
     color label_color = na
     if (days_held > 0 and not daily_sell_signal)

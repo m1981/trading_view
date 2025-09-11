@@ -1,0 +1,103 @@
+//@version=5
+indicator("Mean Reversion Strategy (Daily Timeframe)", overlay=true)
+
+// Parameters
+ma_200_length = input.int(200, "MA 200 Length")
+ma_20_length = input.int(20, "MA 20 Length")
+bb_std_mult = input.float(2.0, "Bollinger Bands StdDev Multiplier")
+rsi_length = input.int(2, "RSI Length")
+price_change_period = input.int(150, "Price Change Period (Days)")
+max_hold_days = input.int(10, "Maximum Hold Days")
+limit_order_pct = input.float(3.0, "Limit Order Percent Below", minval=0.1, step=0.1)
+
+// Force daily timeframe for all calculations
+[daily_close, daily_high, daily_low, daily_open] = request.security(syminfo.tickerid, "D", [close, high, low, open])
+
+// Calculate indicators using daily data
+daily_ma_200 = request.security(syminfo.tickerid, "D", ta.sma(close, ma_200_length))
+daily_ma_20 = request.security(syminfo.tickerid, "D", ta.sma(close, ma_20_length))
+daily_bb_std = request.security(syminfo.tickerid, "D", ta.stdev(close, ma_20_length))
+daily_bb_lower = daily_ma_20 - (bb_std_mult * daily_bb_std)
+daily_rsi_2 = request.security(syminfo.tickerid, "D", ta.rsi(close, rsi_length))
+
+// Calculate price change over specified period (daily timeframe)
+daily_price_change_150d = request.security(syminfo.tickerid, "D", close / close[price_change_period] - 1)
+
+// Entry conditions
+daily_uptrend = daily_close > daily_ma_200
+daily_pullback = daily_close < daily_bb_lower
+daily_buy_limit_price = daily_close * (1 - limit_order_pct/100)  // Limit order price
+
+// Buy signal
+daily_buy_signal = daily_uptrend and daily_pullback
+
+// Calculate days held (needs to be tracked across timeframes)
+var float last_buy_time = 0.0
+var int days_held = 0
+
+// Get current day
+current_day_time = request.security(syminfo.tickerid, "D", time)
+is_new_day = current_day_time != last_buy_time and not na(current_day_time)
+
+if (daily_buy_signal and (days_held == 0 or is_new_day))
+    days_held := 1
+    last_buy_time := current_day_time
+else if (days_held > 0 and is_new_day)
+    days_held := days_held + 1
+
+// Exit conditions
+daily_rsi_exit = daily_rsi_2 > 50
+daily_time_exit = days_held >= max_hold_days
+daily_sell_signal = (daily_rsi_exit or daily_time_exit) and days_held > 0
+
+// Reset days_held when selling
+if (daily_sell_signal and is_new_day)
+    days_held := 0
+
+// Plotting
+plot(daily_ma_200, "200-day MA", color.rgb(255, 165, 0), 2)
+plot(daily_ma_20, "20-day MA", color.rgb(0, 128, 255), 1)
+plot(daily_bb_lower, "Lower Bollinger Band", color.rgb(255, 0, 0), 1)
+
+// Plot buy and sell signals
+plotshape(daily_buy_signal, "Buy Signal", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(daily_sell_signal, "Sell Signal", shape.triangledown, location.abovebar, color.red, size=size.small)
+
+// Display current status
+var label status_label = na
+if (barstate.islast)
+    status_text = "Daily Strategy Status:\n"
+    status_text += "Uptrend: " + (daily_uptrend ? "Yes" : "No") + "\n"
+    status_text += "Pullback: " + (daily_pullback ? "Yes" : "No") + "\n"
+    status_text += "RSI(2): " + str.tostring(daily_rsi_2, "#.##") + "\n"
+    status_text += "Days Held: " + str.tostring(days_held) + "\n"
+    status_text += "150d Change: " + str.tostring(daily_price_change_150d * 100, "#.##") + "%"
+    
+    color label_color = na
+    if (days_held > 0 and not daily_sell_signal)
+        label_color = color.green
+    else if (daily_buy_signal)
+        label_color = color.green
+    else
+        label_color = color.gray
+        
+    if (not na(status_label))
+        label.delete(status_label)
+    
+    status_label := label.new(bar_index, high, status_text,color=color.new(color.black, 20),textcolor=label_color,style=label.style_label_down,yloc=yloc.abovebar)
+
+// Create a table to show strategy details
+var table strategy_info = table.new(position.top_right, 3, 7, bgcolor = color.new(color.black, 70), border_width=1)
+
+if (barstate.isfirst)
+    table.cell(strategy_info, 0, 0, "Mean Reversion Strategy", text_color=color.white, bgcolor=color.new(color.blue, 70), text_size=size.small)
+    table.cell(strategy_info, 0, 1, "(Daily Timeframe Data)", text_color=color.white, bgcolor=color.new(color.blue, 70), text_size=size.small)
+    table.cell(strategy_info, 0, 2, "Buy Conditions:", text_color=color.white, text_size=size.small)
+    table.cell(strategy_info, 0, 3, "1. Price > 200 MA", text_color=color.white, text_size=size.small)
+    table.cell(strategy_info, 0, 4, "2. Price < Lower BB", text_color=color.white, text_size=size.small)
+    table.cell(strategy_info, 0, 5, "Sell Conditions:", text_color=color.white, text_size=size.small)
+    table.cell(strategy_info, 0, 6, "1. RSI(2) > 50 or 10 days held", text_color=color.white, text_size=size.small)
+
+// Alert conditions
+alertcondition(daily_buy_signal, "Buy Signal", "Mean Reversion Strategy: Buy Signal")
+alertcondition(daily_sell_signal, "Sell Signal", "Mean Reversion Strategy: Sell Signal")

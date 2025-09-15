@@ -1,16 +1,16 @@
 //@version=5
 strategy("Mean Reversion Strategy (Daily Timeframe)",
-         overlay=true,
-         default_qty_type=strategy.percent_of_equity,
-         default_qty_value=100,
-         commission_type=strategy.commission.percent,
-         commission_value=0.1,
-         slippage=2,
-         initial_capital=10000,
-         currency=currency.USD,
-         pyramiding=0,
-         calc_on_every_tick=false,
-         process_orders_on_close=true)
+   overlay=true,
+   default_qty_type=strategy.percent_of_equity,
+   default_qty_value=100,
+   commission_type=strategy.commission.percent,
+   commission_value=0.1,
+   slippage=2,
+   initial_capital=10000,
+   currency=currency.USD,
+   pyramiding=0,
+   calc_on_every_tick=false,
+   process_orders_on_close=true)
 
 // Strategy Parameters
 start_date = input.time(timestamp("2018-01-01"), "Start Date")
@@ -33,41 +33,36 @@ stop_loss = input.float(5.0, "Stop Loss (%)", group="Trade Management")
 // Time filter
 in_date_range = not use_date_filter or (time >= start_date and time <= end_date)
 
-// Force daily timeframe for all calculations
-[daily_close, daily_high, daily_low, daily_open] = request.security(syminfo.tickerid, "D", [close, high, low, open])
-
-// Calculate indicators using daily data
-daily_ma_200 = ta.sma(daily_close, ma_200_length)
-daily_ma_20 = ta.sma(daily_close, ma_20_length)
-daily_bb_std = ta.stdev(daily_close, ma_20_length)
-daily_bb_lower = daily_ma_20 - (bb_std_mult * daily_bb_std)
-daily_rsi_2 = ta.rsi(daily_close, rsi_length)
+// Calculate indicators directly (no need for request.security since we're using timeframe="D")
+ma_200 = ta.sma(close, ma_200_length)
+ma_20 = ta.sma(close, ma_20_length)
+bb_std = ta.stdev(close, ma_20_length)
+bb_lower = ma_20 - (bb_std_mult * bb_std)
+rsi_2 = ta.rsi(close, rsi_length)
 
 // Core entry conditions
-daily_uptrend = daily_close > daily_ma_200
-daily_pullback = daily_close < daily_bb_lower
+uptrend = close > ma_200
+pullback = close < bb_lower
 
 // Volume analysis
-daily_volume = request.security(syminfo.tickerid, "D", volume)
-daily_volume_sma = ta.sma(daily_volume, 20)
-volume_ratio = daily_volume / daily_volume_sma
+volume_sma = ta.sma(volume, 20)
+volume_ratio = volume / volume_sma
 
 // Final buy signal
-daily_buy_signal = daily_uptrend and daily_pullback and enable_long
+buy_signal = uptrend and pullback and enable_long
 
 // Calculate days held
 var float last_buy_time = 0.0
 var int days_held = 0
 var float entry_price = na
 
-// Get current day
-current_day_time = request.security(syminfo.tickerid, "D", time)
-is_new_day = current_day_time != last_buy_time and not na(current_day_time)
+// Track new days
+is_new_day = time != last_buy_time and not na(time)
 
 // Exit conditions
-daily_rsi_exit = daily_rsi_2 > 50
-daily_time_exit = days_held >= max_hold_days
-daily_sell_signal = (daily_rsi_exit or daily_time_exit) and days_held > 0
+rsi_exit = rsi_2 > 50
+time_exit = days_held >= max_hold_days
+sell_signal = (rsi_exit or time_exit) and days_held > 0
 
 // Position management logic
 if (strategy.position_size > 0)
@@ -76,7 +71,7 @@ if (strategy.position_size > 0)
         days_held := days_held + 1
 
     // Exit signals
-    if (daily_sell_signal and is_new_day)
+    if (sell_signal and is_new_day)
         strategy.close("MeanReversion", comment="Exit Signal")
         days_held := 0
         entry_price := na
@@ -84,11 +79,11 @@ else
     days_held := 0
 
 // Entry logic
-if (daily_buy_signal and strategy.position_size == 0 and in_date_range)
-    entry_price := daily_close
+if (buy_signal and strategy.position_size == 0 and in_date_range)
+    entry_price := close
     days_held := 1
-    last_buy_time := current_day_time
-    limit_price = daily_close * (1 - limit_order_pct/100)
+    last_buy_time := time
+    limit_price = close * (1 - limit_order_pct/100)
     strategy.entry("MeanReversion", strategy.long, limit=limit_price, comment="Buy Signal")
 
     // Set profit target and stop loss
@@ -98,18 +93,18 @@ if (daily_buy_signal and strategy.position_size == 0 and in_date_range)
 
 // Apply trailing stop if position is profitable enough
 if (strategy.position_size > 0 and strategy.position_avg_price > 0)
-    current_profit_pct = (daily_close - strategy.position_avg_price) / strategy.position_avg_price * 100
+    current_profit_pct = (close - strategy.position_avg_price) / strategy.position_avg_price * 100
 
     if (current_profit_pct >= trailing_stop_trigger)
         strategy.exit("Trailing Stop", "MeanReversion",
                      trail_price=strategy.position_avg_price * (1 + trailing_stop_trigger/100),
-                     trail_offset=daily_close * trailing_stop_pct/100)
+                     trail_offset=close * trailing_stop_pct/100)
 
 // Plotting
-plot(daily_ma_200, "200-day MA", color.rgb(255, 165, 0), 2)
-plot(daily_ma_20, "20-day MA", color.rgb(0, 128, 255), 1)
-plot(daily_bb_lower, "Lower Bollinger Band", color.rgb(255, 0, 0), 1)
+plot(ma_200, "200-day MA", color.rgb(255, 165, 0), 2)
+plot(ma_20, "20-day MA", color.rgb(0, 128, 255), 1)
+plot(bb_lower, "Lower Bollinger Band", color.rgb(255, 0, 0), 1)
 
 // Plot buy and sell signals
-plotshape(strategy.position_size == 0 and daily_buy_signal, "Buy Signal", shape.triangleup, location.belowbar, color.green, size=size.small)
-plotshape(strategy.position_size > 0 and daily_sell_signal, "Sell Signal", shape.triangledown, location.abovebar, color.red, size=size.small)
+plotshape(strategy.position_size == 0 and buy_signal, "Buy Signal", shape.triangleup, location.belowbar, color.green, size=size.small)
+plotshape(strategy.position_size > 0 and sell_signal, "Sell Signal", shape.triangledown, location.abovebar, color.red, size=size.small)

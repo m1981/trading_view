@@ -48,7 +48,15 @@ stock_vs_spy = (daily_close / daily_close[20]) / (spy_close / spy_close[20])
 sector_strength = stock_vs_spy > 1.0  // Outperforming market
 
 // Final buy signal with all filters
-daily_buy_signal = daily_uptrend and daily_pullback and volume_confirmation and low_fear_environment and sector_strength
+// Option 1: Just core conditions (most relaxed)
+daily_buy_signal = daily_uptrend and daily_pullback
+
+// Option 2: Core + at least 2 of 3 filters
+// filter_count = (volume_confirmation ? 1 : 0) + (low_fear_environment ? 1 : 0) + (sector_strength ? 1 : 0)
+// daily_buy_signal = daily_uptrend and daily_pullback and filter_count >= 2
+
+// Option 3: Core + volume only (volume is most important)
+// daily_buy_signal = daily_uptrend and daily_pullback and volume_confirmation
 
 // Calculate days held (needs to be tracked across timeframes)
 var float last_buy_time = 0.0

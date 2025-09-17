@@ -1,0 +1,266 @@
+//@version=5
+indicator("Market Conditions", 
+         shorttitle="Market Conditions", 
+         overlay=true, 
+         max_labels_count=500, 
+         max_boxes_count=500)
+
+// === INPUT PARAMETERS ===
+// VIX Settings
+vix_symbol = input.symbol("TVC:VIX", "VIX Symbol", group="Market Conditions")
+vix_low_threshold = input.float(10.0, "VIX Low Threshold (Too Calm)", group="Market Conditions")
+vix_high_threshold = input.float(30.0, "VIX High Threshold (Too Volatile)", group="Market Conditions")
+
+// Market Trend Settings
+spy_symbol = input.symbol("SPY", "Market Index Symbol", group="Market Conditions")
+market_ma_length = input.int(50, "Market Trend MA Length", group="Market Conditions")
+
+// Volume Settings
+volume_lookback = input.int(20, "Volume Average Lookback", group="Volume Analysis")
+volume_threshold = input.float(0.8, "Low Volume Threshold (Multiplier)", group="Volume Analysis")
+
+// Volatility Settings
+atr_length = input.int(14, "ATR Length", group="Volatility Analysis")
+bb_length = input.int(20, "Bollinger Bands Length", group="Volatility Analysis")
+bb_mult = input.float(2.0, "Bollinger Bands Multiplier", group="Volatility Analysis")
+
+// Stock Type Analysis
+stock_price_threshold = input.float(10.0, "Minimum Stock Price", group="Stock Quality")
+market_cap_proxy = input.float(1000000000, "Est. Market Cap Proxy (Volume*Price)", group="Stock Quality")
+
+// Table Settings
+table_position = input.string("top_center", "Table Position", 
+                 options=["top_left", "top_center", "top_right"], group="Display")
+cell_size = input.string("small", "Cell Size", options=["tiny", "small", "normal"], group="Display")
+
+// === GET MARKET DATA ===
+vix_data = request.security(vix_symbol, timeframe.period, close)
+spy_data = request.security(spy_symbol, timeframe.period, close)
+spy_ma = request.security(spy_symbol, timeframe.period, ta.sma(close, market_ma_length))
+
+// === CALCULATE CONDITIONS ===
+
+// 1. VIX Analysis
+vix_condition = vix_data >= vix_low_threshold and vix_data <= vix_high_threshold
+vix_status = vix_data < vix_low_threshold ? "TOO LOW" : 
+             vix_data > vix_high_threshold ? "TOO HIGH" : "GOOD"
+vix_color = vix_condition ? color.green : color.red
+
+// 2. Market Trend Analysis
+market_trend_up = spy_data > spy_ma
+market_trend_status = market_trend_up ? "BULLISH" : "BEARISH"
+market_trend_color = market_trend_up ? color.green : color.red
+
+// 3. Volume Analysis
+avg_volume = ta.sma(volume, volume_lookback)
+current_volume_ratio = volume / avg_volume
+volume_adequate = current_volume_ratio >= volume_threshold
+volume_status = volume_adequate ? "ADEQUATE" : "TOO LOW"
+volume_color = volume_adequate ? color.green : color.red
+
+// 4. Current Stock Volatility
+current_atr = ta.atr(atr_length)
+atr_pct = (current_atr / close) * 100
+bb_basis = ta.sma(close, bb_length)
+bb_dev = ta.stdev(close, bb_length)
+bb_upper = bb_basis + bb_mult * bb_dev
+bb_lower = bb_basis - bb_mult * bb_dev
+bb_width_pct = ((bb_upper - bb_lower) / bb_basis) * 100
+
+volatility_good = atr_pct >= 1.0 and atr_pct <= 8.0 and bb_width_pct >= 5.0 and bb_width_pct <= 25.0
+volatility_status = atr_pct < 1.0 ? "TOO LOW" : 
+                   atr_pct > 8.0 ? "TOO HIGH" : 
+                   bb_width_pct < 5.0 ? "COMPRESSED" :
+                   bb_width_pct > 25.0 ? "EXPANDED" : "GOOD"
+volatility_color = volatility_good ? color.green : color.red
+
+// 5. Stock Quality Analysis
+price_adequate = close >= stock_price_threshold
+est_market_cap = volume * close * 252 // Rough annual volume * price estimate
+market_cap_adequate = est_market_cap >= market_cap_proxy
+stock_quality_good = price_adequate and market_cap_adequate
+stock_quality_status = not price_adequate ? "PENNY STOCK" : 
+                      not market_cap_adequate ? "SMALL CAP" : "QUALITY"
+stock_quality_color = stock_quality_good ? color.green : color.red
+
+// 6. Mean Reversion Setup Quality
+// Check if price is within reasonable distance from MAs
+ma_20 = ta.sma(close, 20)
+ma_200 = ta.sma(close, 200)
+price_above_200ma = close > ma_200
+distance_from_200ma = math.abs((close - ma_200) / ma_200) * 100
+mean_reversion_setup = price_above_200ma and distance_from_200ma <= 15.0 // Not too far from trend
+setup_status = not price_above_200ma ? "DOWNTREND" : 
+              distance_from_200ma > 15.0 ? "TOO FAR" : "GOOD SETUP"
+setup_color = mean_reversion_setup ? color.green : color.red
+
+// 7. Overall Assessment
+conditions_met = vix_condition and market_trend_up and volume_adequate and volatility_good and stock_quality_good and mean_reversion_setup
+
+overall_status = conditions_met ? "✅ FAVORABLE" : "❌ UNFAVORABLE"
+overall_color = conditions_met ? color.green : color.red
+
+// 8. Risk Level Assessment
+risk_factors = 0
+risk_factors := not vix_condition ? risk_factors + 1 : risk_factors
+risk_factors := not market_trend_up ? risk_factors + 1 : risk_factors
+risk_factors := not volume_adequate ? risk_factors + 1 : risk_factors
+risk_factors := not volatility_good ? risk_factors + 1 : risk_factors
+risk_factors := not stock_quality_good ? risk_factors + 1 : risk_factors
+risk_factors := not mean_reversion_setup ? risk_factors + 1 : risk_factors
+
+risk_level = risk_factors == 0 ? "LOW" : 
+  risk_factors <= 2 ? "MEDIUM" : 
+  risk_factors <= 4 ? "HIGH" : "EXTREME"
+risk_color = risk_factors == 0 ? color.green : 
+  risk_factors <= 2 ? color.yellow : 
+  risk_factors <= 4 ? color.orange : color.red
+
+// === CREATE SINGLE ROW STRIP TABLE ===
+if barstate.islast
+    // Create two row table - main strip + status text
+    var table condition_table = table.new(
+         position=table_position == "top_left" ? position.top_left :
+                  table_position == "top_center" ? position.top_center :
+                  position.top_right,
+         columns=7, 
+         rows=2, 
+         bgcolor=color.white, 
+         border_width=1,
+         border_color=color.gray)
+    
+    // Clear table
+    
+    // Set text size based on input
+    text_size = cell_size == "tiny" ? size.tiny : 
+  cell_size == "small" ? size.small : size.normal
+    status_text_size = cell_size == "tiny" ? size.tiny : size.small  // Always smaller for status
+    
+    // === ROW 1: MAIN STRIP ===
+    // Overall Status (Column 0)
+    overall_text = conditions_met ? "✅GO" : "❌NO"
+    table.cell(condition_table, 0, 0, overall_text, 
+               text_color=color.white, bgcolor=overall_color, text_size=text_size)
+    
+    // VIX (Column 1)
+    vix_text = "VIX:" + str.tostring(vix_data, "#.#")
+    table.cell(condition_table, 1, 0, vix_text, 
+               text_color=color.white, bgcolor=vix_color, text_size=text_size)
+    
+    // Market Trend (Column 2)
+    pct_above_ma = ((spy_data - spy_ma) / spy_ma) * 100
+    trend_text = "MKT:" + str.tostring(pct_above_ma, "+#.#;-#.#") + "%"
+    table.cell(condition_table, 2, 0, trend_text, 
+               text_color=color.white, bgcolor=market_trend_color, text_size=text_size)
+    
+    // Volume (Column 3)
+    vol_text = "VOL:" + str.tostring(current_volume_ratio, "#.#") + "x"
+    table.cell(condition_table, 3, 0, vol_text, 
+               text_color=color.white, bgcolor=volume_color, text_size=text_size)
+    
+    // ATR Volatility (Column 4)
+    atr_text = "ATR:" + str.tostring(atr_pct, "#.#") + "%"
+    table.cell(condition_table, 4, 0, atr_text, 
+               text_color=color.white, bgcolor=volatility_color, text_size=text_size)
+    
+    // Stock Quality (Column 5) 
+    quality_text = "PRC:$" + str.tostring(close, "#.##")
+    table.cell(condition_table, 5, 0, quality_text, 
+               text_color=color.white, bgcolor=stock_quality_color, text_size=text_size)
+    
+    // Setup Distance from 200MA (Column 6)
+    setup_text = "200MA:" + str.tostring(distance_from_200ma, "+#.#;-#.#") + "%"
+    table.cell(condition_table, 6, 0, setup_text, 
+               text_color=color.white, bgcolor=setup_color, text_size=text_size)
+    
+    // === ROW 2: STATUS TEXT ===
+    // Build status message
+    var string status_message = ""
+    var array<string> issues = array.new<string>()
+    var array<string> good_conditions = array.new<string>()
+    
+    // Clear arrays for new values
+    array.clear(issues)
+    array.clear(good_conditions)
+    
+    // Check each condition and build arrays
+    if not vix_condition
+        if vix_data < vix_low_threshold
+            array.push(issues, "VIX Too Low (" + str.tostring(vix_data, "#.#") + ")")
+        else
+            array.push(issues, "VIX Too High (" + str.tostring(vix_data, "#.#") + ")")
+    else
+        array.push(good_conditions, "VIX OK")
+        
+    if not market_trend_up
+        array.push(issues, "Bearish Market (" + str.tostring(pct_above_ma, "#.#") + "%)")
+    else
+        array.push(good_conditions, "Bullish Market")
+        
+    if not volume_adequate
+        array.push(issues, "Low Volume (" + str.tostring(current_volume_ratio, "#.#") + "x)")
+    else
+        array.push(good_conditions, "Volume OK")
+        
+    if not volatility_good
+        if atr_pct < 1.0
+            array.push(issues, "Low Volatility (" + str.tostring(atr_pct, "#.#") + "%)")
+        else if atr_pct > 8.0
+            array.push(issues, "High Volatility (" + str.tostring(atr_pct, "#.#") + "%)")
+        else if bb_width_pct < 5.0
+            array.push(issues, "Compressed BB")
+        else
+            array.push(issues, "Expanded BB")
+    else
+        array.push(good_conditions, "Volatility OK")
+        
+    if not stock_quality_good
+        if not price_adequate
+            array.push(issues, "Penny Stock ($" + str.tostring(close, "#.##") + ")")
+        else
+            array.push(issues, "Small Cap")
+    else
+        array.push(good_conditions, "Quality Stock")
+        
+    if not mean_reversion_setup
+        if not price_above_200ma
+            array.push(issues, "Downtrend")
+        else
+            array.push(issues, "Too Extended (" + str.tostring(distance_from_200ma, "#.#") + "%)")
+    else
+        array.push(good_conditions, "Good Setup")
+    
+    // Build final status message
+    var color status_bg_color = na
+    if conditions_met
+        status_message := "✅ ALL CONDITIONS FAVORABLE - Mean Reversion Strategy Recommended"
+        status_bg_color := color.new(color.green, 80)
+    else
+        status_message := "❌ ISSUES: "
+        issue_count = array.size(issues)
+        for i = 0 to math.min(issue_count - 1, 2)  // Show max 3 issues to keep it concise
+            if i > 0
+                status_message := status_message + " | "
+            status_message := status_message + array.get(issues, i)
+        if issue_count > 3
+            status_message := status_message + " | +" + str.tostring(issue_count - 3) + " more"
+        status_bg_color := color.new(color.red, 80)
+    
+    // Display status message across all columns
+    table.cell(condition_table, 0, 1, status_message, text_color=color.black, bgcolor=status_bg_color, text_size=status_text_size)
+    
+    // Merge cells in row 2 to span across all columns
+    table.merge_cells(condition_table, 0, 1, 6, 1)
+
+// === PLOT ALERTS ===
+// Background color based on overall conditions
+bgcolor(conditions_met ? color.new(color.green, 95) : color.new(color.red, 95), title="Market Conditions")
+
+// Plot key levels for reference
+plot(ma_200, "200 MA", color=color.orange, linewidth=1)
+plot(bb_upper, "BB Upper", color=color.blue, linewidth=1, display=display.none)
+plot(bb_lower, "BB Lower", color=color.blue, linewidth=1, display=display.none)
+
+// Alert conditions
+alertcondition(conditions_met and not conditions_met[1], "Favorable Conditions", "Mean reversion conditions are now favorable")
+alertcondition(not conditions_met and conditions_met[1], "Unfavorable Conditions", "Mean reversion conditions turned unfavorable")

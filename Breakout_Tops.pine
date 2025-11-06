@@ -1,5 +1,5 @@
 //@version=5
-indicator("Enhanced Breakout & Indicator Dashboard + Tops Detector", "Breakout+Tops", overlay=true, max_labels_count=500)
+indicator("Enhanced Breakout & Indicator Dashboard + Tops & Doji Detection", "Breakout+Tops+OB", overlay=true, max_labels_count=500)
 
 //== SECTION 1: INPUTS & CONFIGURATION ==
 string GRP_BREAKOUT = "Breakout Settings"
@@ -19,16 +19,12 @@ rsi_len = input.int(14, "RSI Length", group=GRP_INDICATORS)
 ma_dist_len = input.int(9, "MA for Price Distance", group=GRP_INDICATORS)
 
 //== SECTION 2: CORE CALCULATIONS ==
-// Price & Volume Moving Averages
 ma1 = ta.sma(close, ma1_len)
 vol_sma = ta.sma(volume, ma1_len)
-
-// Major Moving Averages for Plotting
 ma2 = ta.sma(close, ma2_len)
 ma3 = ta.sma(close, ma3_len)
 ma4 = ta.sma(close, ma4_len)
 
-// Additional Indicator Calculations
 rsi = ta.rsi(close, rsi_len)
 obv = ta.obv
 ma_dist = ta.sma(close, ma_dist_len)
@@ -45,63 +41,68 @@ volScore = volume > vol_sma * 2 ? 100 : volume > vol_sma * 1.5 ? 75 : volume > v
 goodBreakout = isBreakout and volAboveAvg and volAboveConsol and not volDecline
 weakBreakout = isBreakout and (not volAboveAvg or not volAboveConsol or volDecline)
 
-//== SECTION 4: PLOTTING BREAKOUTS & MAs ==
-// Colors
+//== SECTION 4: PLOTTING ==
 colorGood = color.new(#00ff00, 70)
 colorWeak = color.new(#ff0000, 70)
-
-// Plot Major Moving Averages (no tooltips)
 plot(show_mas ? ma1 : na, "MA 1", color=color.new(color.blue, 0))
 plot(show_mas ? ma2 : na, "MA 2", color=color.new(color.orange, 0))
 plot(show_mas ? ma3 : na, "MA 3", color=color.new(color.purple, 0))
 plot(show_mas ? ma4 : na, "MA 4", color=color.new(color.red, 0), linewidth=2)
 
-// Plot breakout dots
-plotchar(goodBreakout, "Strong Breakout", "•", location.abovebar, colorGood, size=size.large)
-plotchar(weakBreakout, "Weak Breakout", "•", location.abovebar, colorWeak, size=size.large)
 
-// Labels for breakouts
 if goodBreakout
     label.new(bar_index, high, text="Strong\nVol: " + str.tostring(math.round(volScore)) + "%", color=colorGood, textcolor=color.white, style=label.style_label_down)
 
 //== SECTION 5: DASHBOARD TABLE ==
 if barstate.islast
-    var table indicatorTable = table.new(position.top_right, 2, 7, border_width=1)
+    var table indicatorTable = table.new(position.top_right, 2, 8, border_width=1)
 
     table.cell(indicatorTable, 0, 0, "Indicator Dashboard", bgcolor=color.new(color.black, 0), text_color=color.white, text_size=size.small)
     table.cell(indicatorTable, 1, 0, "Status", bgcolor=color.new(color.black, 0), text_color=color.white, text_size=size.small)
-    
+
     volStatus = volume > vol_sma ? "✓ Above Avg" : "⚠ Below Avg"
     volColor = volume > vol_sma ? color.green : color.red
-    table.cell(indicatorTable, 0, 1, "Vol/Avg", text_color=color.white)
+    table.cell(indicatorTable, 0, 1, "Vol/Avg", text_color=color.rgb(7, 7, 7))
     table.cell(indicatorTable, 1, 1, volStatus, text_color=volColor)
-    
+
     volTrendStatus = volDecline ? "⚠ Declining" : "✓ Rising"
     volTrendColor = volDecline ? color.red : color.green
-    table.cell(indicatorTable, 0, 2, "Vol Trend", text_color=color.white)
+    table.cell(indicatorTable, 0, 2, "Vol Trend", text_color=color.rgb(3, 3, 3))
     table.cell(indicatorTable, 1, 2, volTrendStatus, text_color=volTrendColor)
-    
+
     breakoutStatus = goodBreakout ? "✓ Strong" : weakBreakout ? "⚠ Weak" : "- None"
     breakoutColor = goodBreakout ? color.green : weakBreakout ? color.red : color.gray
-    table.cell(indicatorTable, 0, 3, "Breakout", text_color=color.white)
+    table.cell(indicatorTable, 0, 3, "Breakout", text_color=color.rgb(10, 10, 10))
     table.cell(indicatorTable, 1, 3, breakoutStatus, text_color=breakoutColor)
 
     rsiStatus = rsi > 70 ? "🔥 Overbought" : rsi < 30 ? "🧊 Oversold" : "↔ Neutral"
     rsiColor = rsi > 70 ? color.red : rsi < 30 ? color.green : color.gray
-    table.cell(indicatorTable, 0, 4, "RSI (" + str.tostring(rsi_len) + ")", text_color=color.white)
+    table.cell(indicatorTable, 0, 4, "RSI (" + str.tostring(rsi_len) + ")", text_color=color.rgb(12, 12, 12))
     table.cell(indicatorTable, 1, 4, rsiStatus + " (" + str.tostring(rsi, "#.0") + ")", text_color=rsiColor)
 
     obvRising = obv > obv[1]
     obvStatus = obvRising ? "▲ Rising" : "▼ Falling"
     obvColor = obvRising ? color.green : color.red
-    table.cell(indicatorTable, 0, 5, "OBV Trend", text_color=color.white)
+    table.cell(indicatorTable, 0, 5, "OBV Trend", text_color=color.rgb(7, 7, 7))
     table.cell(indicatorTable, 1, 5, obvStatus, text_color=obvColor)
 
     distColor = price_dist_pct >= 0 ? color.green : color.red
     distSign = price_dist_pct >= 0 ? "+" : ""
-    table.cell(indicatorTable, 0, 6, "Price vs MA(" + str.tostring(ma_dist_len) + ")", text_color=color.white)
+    table.cell(indicatorTable, 0, 6, "Price vs MA(" + str.tostring(ma_dist_len) + ")", text_color=color.rgb(7, 7, 7))
     table.cell(indicatorTable, 1, 6, distSign + str.tostring(price_dist_pct, "#.00") + "%", text_color=distColor)
 
+    //== NEW: Overbought/Oversold by MA distance ==
+    overbought_thresh = input.float(5.0, "Overbought Threshold (%)", step=0.1)
+    oversold_thresh   = input.float(-5.0, "Oversold Threshold (%)", step=0.1)
+
+    isOverbought = price_dist_pct > overbought_thresh
+    isOversold   = price_dist_pct < oversold_thresh
+
+    distStatus2 = isOverbought ? "🔥 Overbought" : isOversold ? "🧊 Oversold" : "↔ Neutral"
+    distColor2 = isOverbought ? color.red : isOversold ? color.green : color.gray
+
+    table.cell(indicatorTable, 0, 7, "Dist. vs MA", text_color=color.rgb(7, 7, 7))
+    table.cell(indicatorTable, 1, 7, distStatus2 + " (" + str.tostring(price_dist_pct, "#.00") + "%)", text_color=distColor2)
 
 //== SECTION 6: ALERTS ==
 alertcondition(goodBreakout, "Strong Volume Breakout", "Price breakout with strong volume")
@@ -115,8 +116,8 @@ isLocalHigh = high > high[1] and high >= high[2]
 swingHigh = isLocalHigh ? high : na
 
 var float prevTopPrice = na
-var int   prevTopBar   = na
-var int   topCount     = 0
+var int prevTopBar = na
+var int topCount = 0
 
 if not na(swingHigh)
     thisTopPrice = swingHigh
@@ -126,16 +127,11 @@ if not na(swingHigh)
         priceDiffPerc = math.abs(thisTopPrice - prevTopPrice) / prevTopPrice * 100
         barDiff = thisBarIndex - prevTopBar
 
-        // Detect only consecutive bars and price within tolerance
         if barDiff == 1 and priceDiffPerc <= tolerancePerc
             topCount += 1
             labelText = topCount == 2 ? "🔴 DT" : str.format("🔴 x{0}", topCount)
-
-            // Line and label (no tooltips)
             line.new(prevTopBar, prevTopPrice, thisBarIndex, thisTopPrice, color=color.red, width=2, style=line.style_dotted)
-            label.new(thisBarIndex, thisTopPrice, labelText,
-                      style=label.style_label_down, color=color.new(color.red, 0),
-                      textcolor=color.white, size=size.small)
+            label.new(thisBarIndex, thisTopPrice, labelText, style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
             alert("Double/Multiple Top detected near " + str.tostring(thisTopPrice, format.mintick), alert.freq_once_per_bar)
         else
             topCount := 1
@@ -145,60 +141,36 @@ if not na(swingHigh)
     prevTopPrice := thisTopPrice
     prevTopBar := thisBarIndex
 
-
-// == DOJI / DOJI-STAR (HIGH-VOLUME) DETECTION with SMART DEBUG ==
-
-//----------------------------------------------------
-// User Inputs
-//----------------------------------------------------
+//== SECTION 8: DOJI / DOJI-STAR (HIGH-VOLUME) DETECTION ==
 doji_body_pct = input.float(0.25, "Doji body <= % of candle range", step=0.01)
-vol_mult      = input.float(1.2, "High-volume multiplier", step=0.1)
+vol_mult = input.float(1.2, "High-volume multiplier", step=0.1)
+vol_ma_len = input.int(20, "Volume MA (bars)")
+debugMode = input.bool(true, "Show Doji Debug Info")
 
-vol_ma_len    = input.int(20, "Volume MA (bars)")
-debugMode     = input.bool(true, "Show Doji Debug Info")
-
-//----------------------------------------------------
-// Core Calculations
-//----------------------------------------------------
-bodySize    = math.abs(close - open)
+bodySize = math.abs(close - open)
 candleRange = high - low
-bodyPerc    = candleRange > 0 ? (bodySize / candleRange) * 100 : na
-avgVol      = ta.sma(volume, vol_ma_len)
-volRatio    = avgVol > 0 ? volume / avgVol : na
+bodyPerc = candleRange > 0 ? (bodySize / candleRange) * 100 : na
+avgVol = ta.sma(volume, vol_ma_len)
+volRatio = avgVol > 0 ? volume / avgVol : na
 
-
-isDoji      = candleRange > 0 and (bodySize / candleRange) <= doji_body_pct
-priorBull   = close[2] > open[2]
-dojiLow     = low[1]
-dojiMid     = (high[1] + low[1]) / 2
+isDoji = candleRange > 0 and (bodySize / candleRange) <= doji_body_pct
+priorBull = close[2] > open[2]
+dojiLow = low[1]
+dojiMid = (high[1] + low[1]) / 2
 confirmBearish = (close < open) and (close < dojiLow or close < dojiMid)
 
-dojiHighVol       = isDoji and volRatio > vol_mult
+dojiHighVol = isDoji and volRatio > vol_mult
 dojiStarConfirmed = priorBull and isDoji and confirmBearish and (volRatio > vol_mult or volume[1] > avgVol * vol_mult)
 
-//----------------------------------------------------
-// Debug Visualization (safe global plotting)
-//----------------------------------------------------
 debugBgColor = debugMode ? (dojiStarConfirmed ? color.new(color.red, 85) : isDoji ? color.new(color.yellow, 85) : na) : na
 bgcolor(debugBgColor)
 
 if debugMode
     label.new(bar_index, high + ta.tr(true) * 0.2, str.format("{0,number,#.0}% | x{1,number,#.1}", bodyPerc, volRatio), style=label.style_label_down, color=color.new(color.gray, 80), textcolor=color.rgb(238, 53, 53), size=size.small)
 
-//----------------------------------------------------
-// Main Pattern Signals
-//----------------------------------------------------
 if dojiHighVol
-    label.new(bar_index, high, "🔥 HV Doji",
-              style=label.style_label_down, color=color.new(color.orange, 0),
-              textcolor=color.white, size=size.small)
+    label.new(bar_index, high, "🔥 HV Doji", style=label.style_label_down, color=color.new(color.orange, 0), textcolor=color.white, size=size.small)
 
 if dojiStarConfirmed
-    label.new(bar_index, high, "★ Doji Star",
-              style=label.style_label_down, color=color.new(color.red, 0),
-              textcolor=color.white, size=size.small)
-    line.new(bar_index - 1, high[1], bar_index, high,
-             color=color.new(color.red, 0), style=line.style_dotted, width=2)
-
-
-
+    label.new(bar_index, high, "★ Doji Star", style=label.style_label_down, color=color.new(color.red, 0), textcolor=color.white, size=size.small)
+    line.new(bar_index - 1, high[1], bar_index, high, color=color.new(color.red, 0), style=line.style_dotted, width=2)
